@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCX.AI ChatBot</title>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Marked Markdown Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Highlight.js syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <div class="brand-info">
+                        <i data-lucide="bot" style="color: var(--accent-green);"></i>
+                        <h2>SCX.AI</h2>
+                        <span class="badge">Threaded</span>
+                    </div>
+                </div>
+                <button id="btn-new-chat" class="new-chat-btn" title="Create New Thread">
+                    <i data-lucide="plus"></i>
+                    <span>New chat</span>
+                </button>
+            </div>
+
+            <div class="sidebar-search">
+                <div class="search-box">
+                    <i data-lucide="search"></i>
+                    <input type="text" id="search-threads-input" placeholder="Search chats...">
+                </div>
+            </div>
+
+            <!-- Threads List -->
+            <div class="threads-section">
+                <div class="section-label">
+                    <span>Recent Chats</span>
+                    <span id="thread-count" class="count-badge">0</span>
+                </div>
+                <div id="threads-list" class="threads-list">
+                    <!-- Dynamic Threads populated via JS -->
+                </div>
+            </div>
+
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+                <div class="api-status-card">
+                    <div class="status-indicator" id="api-status-dot"></div>
+                    <div class="status-text">
+                        <span class="status-title">SCX.AI Connected</span>
+                        <span class="status-subtitle" id="active-model-display">Meta-Llama-3.3-70B</span>
+                    </div>
+                </div>
+                
+                <div class="footer-actions">
+                    <button id="btn-open-settings" class="icon-button" title="Settings">
+                        <i data-lucide="settings"></i>
+                    </button>
+                    <button id="btn-clear-all" class="icon-button danger" title="Clear All Threads">
+                        <i data-lucide="trash-2"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Content -->
+        <main class="main-content">
+            
+            <!-- Top Header -->
+            <header class="chat-header">
+                <div class="header-left">
+                    <button id="btn-toggle-sidebar" class="icon-button mobile-only">
+                        <i data-lucide="panel-left"></i>
+                    </button>
+                    <div class="thread-info">
+                        <h1 id="current-thread-title">New Conversation</h1>
+                        <span class="thread-meta" id="thread-created-at"></span>
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <!-- Model Selector -->
+                    <div class="model-selector-wrapper">
+                        <i data-lucide="sparkles" class="selector-icon"></i>
+                        <select id="header-model-select" class="model-select">
+                            <option value="Meta-Llama-3.3-70B-Instruct">Llama 3.3 70B</option>
+                            <option value="Meta-Llama-3.1-405B-Instruct">Llama 3.1 405B</option>
+                            <option value="Qwen/Qwen2.5-72B-Instruct">Qwen 2.5 72B</option>
+                            <option value="DeepSeek-R1">DeepSeek R1</option>
+                        </select>
+                    </div>
+
+                    <button id="btn-edit-prompt" class="action-chip" title="System Prompt">
+                        <i data-lucide="sliders"></i>
+                        <span>System Prompt</span>
+                    </button>
+
+                    <button id="btn-export-chat" class="icon-button" title="Export Chat">
+                        <i data-lucide="download"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Chat Messages Container -->
+            <div id="chat-messages" class="messages-container">
+                <!-- Welcome Screen -->
+                <div id="welcome-screen" class="welcome-screen">
+                    <div class="welcome-icon">
+                        <i data-lucide="message-square"></i>
+                    </div>
+                    <h2>How can I help you today?</h2>
+                    <p>SCX.AI Threaded Chat powered by Llama-3.3-70B. Start a conversation or pick a suggestion below.</p>
+                    
+                    <div class="quick-prompts">
+                        <button class="prompt-card" data-prompt="Explain quantum computing in simple terms with key examples.">
+                            <i data-lucide="atom"></i>
+                            <div>
+                                <h4>Quantum Computing</h4>
+                                <p>Explain in simple terms with examples</p>
+                            </div>
+                        </button>
+                        <button class="prompt-card" data-prompt="Write a Python script to parse JSON and export to CSV asynchronously.">
+                            <i data-lucide="code-2"></i>
+                            <div>
+                                <h4>Python Utility</h4>
+                                <p>Async JSON to CSV exporter</p>
+                            </div>
+                        </button>
+                        <button class="prompt-card" data-prompt="Help me outline a strategy for building scalable web services.">
+                            <i data-lucide="layers"></i>
+                            <div>
+                                <h4>Architecture Plan</h4>
+                                <p>Scalable web services blueprint</p>
+                            </div>
+                        </button>
+                        <button class="prompt-card" data-prompt="Write a creative short story set in a cybernetic future.">
+                            <i data-lucide="pen-tool"></i>
+                            <div>
+                                <h4>Creative Writing</h4>
+                                <p>Cybernetic sci-fi short story</p>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Floating Input Controls -->
+            <div class="input-area-wrapper">
+                <div class="input-container">
+                    
+                    <div class="input-top-bar" id="input-top-bar">
+                        <div class="active-badge" id="active-system-prompt-badge">
+                            <i data-lucide="shield" style="width: 12px; height: 12px;"></i>
+                            <span id="system-prompt-text-preview">System: Standard Assistant</span>
+                        </div>
+                    </div>
+
+                    <!-- Attached Documents Bar -->
+                    <div id="attached-docs-bar" class="attached-docs-bar hidden"></div>
+
+                    <div class="input-main">
+                        <button id="btn-upload-doc" class="icon-button upload-doc-btn" title="Upload Document (PDF, TXT, DOCX, MD, CSV)">
+                            <i data-lucide="paperclip"></i>
+                        </button>
+
+                        <textarea 
+                            id="user-input" 
+                            placeholder="Message SCX.AI or ask about uploaded documents..."
+                            rows="1"
+                        ></textarea>
+
+                        <input type="file" id="file-input-element" accept=".pdf,.docx,.txt,.md,.csv,.json,.py,.js" style="display:none;">
+
+                        <div class="input-actions">
+                            <button id="btn-stop-gen" class="btn-stop hidden" title="Stop Generation">
+                                <i data-lucide="square" style="width: 12px; height: 12px;"></i>
+                                <span>Stop</span>
+                            </button>
+                            <button id="btn-send" class="btn-send" title="Send Message">
+                                <i data-lucide="arrow-up"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="input-footer">
+                        <span>SCX.AI Engine • Meta-Llama-3.3-70B</span>
+                        <span class="char-count" id="char-count">0 chars</span>
+                    </div>
+
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i data-lucide="settings"></i> SCX.AI Settings</h3>
+                <button id="btn-close-settings" class="icon-button"><i data-lucide="x"></i></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="setting-api-key">
+                        <span>SCX.AI API Key</span>
+                        <span class="label-badge">Required</span>
+                    </label>
+                    <div class="password-input">
+                        <input type="password" id="setting-api-key" placeholder="Enter your SCX.AI API key...">
+                        <button id="btn-toggle-key-visibility" type="button" class="icon-button">
+                            <i data-lucide="eye"></i>
+                        </button>
+                    </div>
+                    <small>Key is saved locally in your browser to authorize requests to https://api.scx.ai/v1.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="setting-base-url">SCX.AI Base URL</label>
+                    <input type="text" id="setting-base-url" value="https://api.scx.ai/v1">
+                </div>
+
+                <div class="form-group">
+                    <label for="setting-default-model">Default Model</label>
+                    <input type="text" id="setting-default-model" value="Meta-Llama-3.3-70B-Instruct">
+                </div>
+
+                <div class="form-group">
+                    <label for="setting-system-prompt">Default System Prompt</label>
+                    <textarea id="setting-system-prompt" rows="3" placeholder="Default instructions for new chats..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="setting-temperature">
+                        <span>Temperature</span>
+                        <span id="temp-val-display" class="val-display">0.7</span>
+                    </label>
+                    <input type="range" id="setting-temperature" min="0" max="1" step="0.05" value="0.7">
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 6px 0;">
+
+                <div class="form-group">
+                    <label for="setting-grounded-agent-id">Grounded AI Agent ID</label>
+                    <input type="text" id="setting-grounded-agent-id" value="7646d28c-446b-491c-8f32-7d1c134d78a9" placeholder="Grounded Agent ID...">
+                </div>
+
+                <div class="form-group">
+                    <label for="setting-grounded-api-key">Grounded AI API Key</label>
+                    <input type="text" id="setting-grounded-api-key" value="grnd_c69448bc68f344fba557d1c465cf5a20b5daa9ac0737d87f" placeholder="Grounded API Key...">
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btn-save-settings" class="btn-primary">
+                    <i data-lucide="check"></i> Save Settings
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit System Prompt Modal -->
+    <div id="prompt-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i data-lucide="sliders"></i> Thread System Prompt</h3>
+                <button id="btn-close-prompt-modal" class="icon-button"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <textarea id="thread-prompt-input" rows="5" placeholder="Set custom instructions for this chat thread..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-save-thread-prompt" class="btn-primary">Save Prompt</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom JS Script -->
+    <script src="/static/app.js"></script>
+</body>
+</html>
