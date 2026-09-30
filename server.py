@@ -73,17 +73,13 @@ def extract_text_from_file(filename: str, file_bytes: bytes) -> str:
     return text.strip()
 
 # Grounded AI Evaluation & Verification Call
-def monitor_grounded(question: str, response: str, context: Optional[str] = None, agent_id: Optional[str] = None, api_key: Optional[str] = None) -> Dict[str, Any]:
+def monitor_grounded(question: str, response: str, agent_id: Optional[str] = None, api_key: Optional[str] = None) -> Dict[str, Any]:
     target_agent_id = agent_id or GROUNDED_AGENT_ID
     target_api_key = api_key or GROUNDED_API_KEY
     
     clean_resp = response.strip()
     if len(clean_resp) > 2500:
         clean_resp = clean_resp[:2500] + "..."
-
-    clean_ctx = context.strip() if context else "SCX.AI Engine Context"
-    if len(clean_ctx) > 3000:
-        clean_ctx = clean_ctx[:3000] + "..."
 
     try:
         res = requests.post(
@@ -92,8 +88,7 @@ def monitor_grounded(question: str, response: str, context: Optional[str] = None
             json={
                 "agentId": target_agent_id,
                 "question": question,
-                "aiResponse": clean_resp,
-                "context": clean_ctx
+                "aiResponse": clean_resp
             },
             timeout=45
         )
@@ -204,7 +199,6 @@ class ChatRequest(BaseModel):
 class GroundedScoreRequest(BaseModel):
     question: str
     ai_response: str
-    context: Optional[str] = None
     agent_id: Optional[str] = None
     api_key: Optional[str] = None
 
@@ -302,7 +296,6 @@ def score_with_grounded(data: GroundedScoreRequest):
     result = monitor_grounded(
         question=data.question,
         response=data.ai_response,
-        context=data.context,
         agent_id=data.agent_id,
         api_key=data.api_key
     )
@@ -526,13 +519,11 @@ async def chat_stream(request_data: ChatRequest, x_api_key: Optional[str] = Head
             # Send evaluating status event to UI
             yield f"data: {json.dumps({'type': 'grounded_evaluating', 'message_id': assistant_msg_id})}\n\n"
 
-            # Execute Grounded AI Verification using Document Context as Grounding baseline
-            grounding_context = doc_context_str if doc_context_str else ""
+            # Execute Grounded AI Verification
             grounded_res = await asyncio.to_thread(
                 monitor_grounded,
                 question=request_data.message,
                 response=assistant_content,
-                context=grounding_context,
                 agent_id=request_data.grounded_agent_id,
                 api_key=request_data.grounded_api_key
             )
@@ -638,10 +629,9 @@ async def open_public_chat(data: OpenIntegrationRequest):
         assistant_content = completion.choices[0].message.content or ""
         
         # Execute Grounded AI verification in background thread to prevent HTTP timeouts
-        grounding_context = doc_context_str if doc_context_str else ""
         threading.Thread(
             target=monitor_grounded,
-            args=(data.message, assistant_content, grounding_context)
+            args=(data.message, assistant_content)
         ).start()
         
         # Save assistant message to DB
