@@ -73,7 +73,6 @@ class SCXCLIChatBot:
         self.api_key = DEFAULT_API_KEY or os.getenv("SCX_API_KEY", "")
         self.base_url = DEFAULT_BASE_URL
         self.model = DEFAULT_MODEL
-        self.system_prompt = "You are a helpful AI assistant. Answer concisely to save tokens."
         self.messages: List[Dict[str, str]] = []
         self.documents: Dict[str, str] = {} # filename -> text
         self.client = None
@@ -100,7 +99,6 @@ class SCXCLIChatBot:
         print(f"  {Colors.CYAN}/docs{Colors.RESET}            - List attached documents")
         print(f"  {Colors.CYAN}/cleardocs{Colors.RESET}       - Clear attached document context")
         print(f"  {Colors.CYAN}/model <name>{Colors.RESET}    - Switch LLM model")
-        print(f"  {Colors.CYAN}/system <text>{Colors.RESET}   - Custom system prompt")
         print(f"  {Colors.CYAN}/history{Colors.RESET}         - View message history")
         print(f"  {Colors.CYAN}/export{Colors.RESET}          - Save chat transcript to markdown")
         print(f"  {Colors.CYAN}/clear{Colors.RESET}           - Clear console screen")
@@ -108,7 +106,6 @@ class SCXCLIChatBot:
 
     def build_effective_messages(self) -> List[Dict[str, str]]:
         formatted = []
-        sys_content = self.system_prompt
         
         # Token-efficient document context injection
         if self.documents:
@@ -118,10 +115,7 @@ class SCXCLIChatBot:
                 snippet = text[:2500]
                 doc_parts.append(f"--- Doc: {fname} ---\n{snippet}")
             doc_ctx = "\n\n".join(doc_parts)
-            sys_content += f"\n\nContext Documents:\n{doc_ctx}"
-            
-        if sys_content:
-            formatted.append({"role": "system", "content": sys_content})
+            formatted.append({"role": "system", "content": f"Context Documents:\n{doc_ctx}"})
             
         formatted.extend(self.messages)
         return formatted
@@ -218,10 +212,6 @@ async def main():
             elif cmd.startswith("/model "):
                 bot.model = user_input[7:].strip()
                 print(f"{Colors.GREEN}[OK] Switched model to: {bot.model}{Colors.RESET}")
-                
-            elif cmd.startswith("/system "):
-                bot.system_prompt = user_input[8:].strip()
-                print(f"{Colors.GREEN}[OK] System prompt updated.{Colors.RESET}")
                 
             elif cmd == "/history":
                 print(f"\n{Colors.BOLD}Chat History ({len(bot.messages)} msgs):{Colors.RESET}")

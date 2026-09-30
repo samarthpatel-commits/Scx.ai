@@ -184,12 +184,10 @@ class MessageItem(BaseModel):
 
 class ThreadCreate(BaseModel):
     title: Optional[str] = "New Conversation"
-    system_prompt: Optional[str] = "You are a helpful, intelligent AI assistant."
     model: Optional[str] = DEFAULT_MODEL
 
 class ThreadUpdate(BaseModel):
     title: Optional[str] = None
-    system_prompt: Optional[str] = None
     model: Optional[str] = None
     pinned: Optional[bool] = None
 
@@ -199,7 +197,6 @@ class ChatRequest(BaseModel):
     api_key: Optional[str] = None
     base_url: Optional[str] = DEFAULT_BASE_URL
     model: Optional[str] = DEFAULT_MODEL
-    system_prompt: Optional[str] = None
     temperature: Optional[float] = 0.7
     grounded_agent_id: Optional[str] = None
     grounded_api_key: Optional[str] = None
@@ -336,11 +333,11 @@ def create_thread(data: ThreadCreate):
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO threads (id, title, system_prompt, model, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (thread_id, data.title, data.system_prompt, data.model, 0, now, now)
+        (thread_id, data.title, None, data.model, 0, now, now)
     )
     conn.commit()
     conn.close()
-    return {"id": thread_id, "title": data.title, "system_prompt": data.system_prompt, "model": data.model, "created_at": now, "updated_at": now, "pinned": 0}
+    return {"id": thread_id, "title": data.title, "model": data.model, "created_at": now, "updated_at": now, "pinned": 0}
 
 @app.get("/api/threads/{thread_id}")
 def get_thread(thread_id: str):
@@ -391,9 +388,6 @@ def update_thread(thread_id: str, data: ThreadUpdate):
     if data.title is not None:
         updates.append("title = ?")
         params.append(data.title)
-    if data.system_prompt is not None:
-        updates.append("system_prompt = ?")
-        params.append(data.system_prompt)
     if data.model is not None:
         updates.append("model = ?")
         params.append(data.model)
@@ -449,7 +443,6 @@ async def chat_stream(request_data: ChatRequest, x_api_key: Optional[str] = Head
     
     base_url = request_data.base_url or DEFAULT_BASE_URL
     model_name = request_data.model or thread["model"] or DEFAULT_MODEL
-    sys_prompt = request_data.system_prompt if request_data.system_prompt is not None else (thread["system_prompt"] or "You are a helpful, intelligent AI assistant.")
     
     # Fetch thread documents for RAG context
     cursor.execute("SELECT filename, content FROM documents WHERE thread_id = ?", (request_data.thread_id,))
@@ -492,17 +485,13 @@ async def chat_stream(request_data: ChatRequest, x_api_key: Optional[str] = Head
     
     formatted_messages = []
     
-    # Construct System Prompt with Document Context if available
-    effective_system_prompt = sys_prompt
+    # Construct Document Context if available
     if doc_context_str:
         effective_system_prompt = (
-            f"{sys_prompt}\n\n"
             f"DOCUMENT KNOWLEDGE BASE (Source documents uploaded by user):\n"
             f"{doc_context_str}\n\n"
             f"INSTRUCTION: Answer the user's question accurately based on the Document Knowledge Base provided above. Cite filenames when relevant."
         )
-
-    if effective_system_prompt:
         formatted_messages.append({"role": "system", "content": effective_system_prompt})
     
     for row in history_rows:
@@ -538,7 +527,7 @@ async def chat_stream(request_data: ChatRequest, x_api_key: Optional[str] = Head
             yield f"data: {json.dumps({'type': 'grounded_evaluating', 'message_id': assistant_msg_id})}\n\n"
 
             # Execute Grounded AI Verification using Document Context as Grounding baseline
-            grounding_context = doc_context_str if doc_context_str else sys_prompt
+            grounding_context = doc_context_str if doc_context_str else ""
             grounded_res = await asyncio.to_thread(
                 monitor_grounded,
                 question=request_data.message,
@@ -577,7 +566,6 @@ async def chat_stream(request_data: ChatRequest, x_api_key: Optional[str] = Head
 class OpenIntegrationRequest(BaseModel):
     message: str
     thread_id: Optional[str] = None
-    system_prompt: Optional[str] = None
     model: Optional[str] = None
     temperature: Optional[float] = 0.7
 
@@ -603,7 +591,7 @@ async def open_public_chat(data: OpenIntegrationRequest):
         title = clean_msg[:32] + ("..." if len(clean_msg) > 32 else "")
         cursor.execute(
             "INSERT INTO threads (id, title, system_prompt, model, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (thread_id, title, data.system_prompt or "You are a helpful AI assistant.", data.model or DEFAULT_MODEL, 0, now, now)
+            (thread_id, title, None, data.model or DEFAULT_MODEL, 0, now, now)
         )
         conn.commit()
     
@@ -627,11 +615,9 @@ async def open_public_chat(data: OpenIntegrationRequest):
         doc_parts = [f"--- DOCUMENT: {d['filename']} ---\n{d['content'][:4000]}" for d in docs]
         doc_context_str = "\n\n".join(doc_parts)
 
-    effective_sys_prompt = data.system_prompt or "You are a helpful AI assistant."
+    formatted_msgs = []
     if doc_context_str:
-        effective_sys_prompt += f"\n\nDOCUMENT KNOWLEDGE BASE:\n{doc_context_str}\n\nINSTRUCTION: Answer strictly based on the Document Knowledge Base."
-
-    formatted_msgs = [{"role": "system", "content": effective_sys_prompt}]
+        formatted_msgs.append({"role": "system", "content": f"DOCUMENT KNOWLEDGE BASE:\n{doc_context_str}\n\nINSTRUCTION: Answer strictly based on the Document Knowledge Base."})
     for row in history_rows:
         formatted_msgs.append({"role": row["role"], "content": row["content"]})
 
@@ -652,7 +638,7 @@ async def open_public_chat(data: OpenIntegrationRequest):
         assistant_content = completion.choices[0].message.content or ""
         
         # Execute Grounded AI verification in background thread to prevent HTTP timeouts
-        grounding_context = doc_context_str if doc_context_str else effective_sys_prompt
+        grounding_context = doc_context_str if doc_context_str else ""
         threading.Thread(
             target=monitor_grounded,
             args=(data.message, assistant_content, grounding_context)

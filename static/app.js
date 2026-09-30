@@ -9,7 +9,6 @@ const state = {
         apiKey: localStorage.getItem("scx_api_key") || "",
         baseUrl: localStorage.getItem("scx_base_url") || "https://api.scx.ai/v1",
         defaultModel: localStorage.getItem("scx_default_model") || "Meta-Llama-3.3-70B-Instruct",
-        systemPrompt: localStorage.getItem("scx_system_prompt") || "You are a helpful, intelligent AI assistant.",
         temperature: parseFloat(localStorage.getItem("scx_temperature") || "0.7"),
         groundedAgentId: localStorage.getItem("grounded_agent_id") || "7646d28c-446b-491c-8f32-7d1c134d78a9",
         groundedApiKey: localStorage.getItem("grounded_api_key") || "grnd_c69448bc68f344fba557d1c465cf5a20b5daa9ac0737d87f"
@@ -31,14 +30,12 @@ const elements = {
     currentThreadTitle: document.getElementById("current-thread-title"),
     threadCreatedAt: document.getElementById("thread-created-at"),
     headerModelSelect: document.getElementById("header-model-select"),
-    btnEditPrompt: document.getElementById("btn-edit-prompt"),
     btnExportChat: document.getElementById("btn-export-chat"),
     btnToggleSidebar: document.getElementById("btn-toggle-sidebar"),
     
     chatMessages: document.getElementById("chat-messages"),
     welcomeScreen: document.getElementById("welcome-screen"),
     
-    systemPromptPreview: document.getElementById("system-prompt-text-preview"),
     userInput: document.getElementById("user-input"),
     btnSend: document.getElementById("btn-send"),
     btnStopGen: document.getElementById("btn-stop-gen"),
@@ -56,18 +53,11 @@ const elements = {
     btnToggleKeyVis: document.getElementById("btn-toggle-key-visibility"),
     settingBaseUrl: document.getElementById("setting-base-url"),
     settingDefaultModel: document.getElementById("setting-default-model"),
-    settingSystemPrompt: document.getElementById("setting-system-prompt"),
     settingTemperature: document.getElementById("setting-temperature"),
     settingGroundedAgentId: document.getElementById("setting-grounded-agent-id"),
     settingGroundedApiKey: document.getElementById("setting-grounded-api-key"),
     tempValDisplay: document.getElementById("temp-val-display"),
-    btnSaveSettings: document.getElementById("btn-save-settings"),
-    
-    // Thread Prompt Modal
-    promptModal: document.getElementById("prompt-modal"),
-    btnClosePromptModal: document.getElementById("btn-close-prompt-modal"),
-    threadPromptInput: document.getElementById("thread-prompt-input"),
-    btnSaveThreadPrompt: document.getElementById("btn-save-thread-prompt")
+    btnSaveSettings: document.getElementById("btn-save-settings")
 };
 
 // Initialize Application
@@ -103,7 +93,6 @@ function initSettingsUI() {
     elements.settingApiKey.value = state.config.apiKey;
     elements.settingBaseUrl.value = state.config.baseUrl;
     elements.settingDefaultModel.value = state.config.defaultModel;
-    elements.settingSystemPrompt.value = state.config.systemPrompt;
     elements.settingTemperature.value = state.config.temperature;
     elements.tempValDisplay.textContent = state.config.temperature;
     elements.headerModelSelect.value = state.config.defaultModel;
@@ -208,7 +197,6 @@ async function createNewThread(initialTitle = "New Conversation") {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 title: initialTitle,
-                system_prompt: state.config.systemPrompt,
                 model: state.config.defaultModel
             })
         });
@@ -236,9 +224,6 @@ async function selectThread(threadId) {
             elements.currentThreadTitle.textContent = state.activeThread.title;
             elements.threadCreatedAt.textContent = `Created: ${new Date(state.activeThread.created_at).toLocaleDateString()}`;
             elements.headerModelSelect.value = state.activeThread.model || state.config.defaultModel;
-            
-            const sysPrompt = state.activeThread.system_prompt || state.config.systemPrompt;
-            elements.systemPromptPreview.textContent = `System: ${sysPrompt.substring(0, 32)}${sysPrompt.length > 32 ? '...' : ''}`;
             
             renderAttachedDocuments(state.activeThread.documents || []);
             renderMessages(state.activeThread.messages || []);
@@ -583,7 +568,6 @@ async function handleSendMessage() {
                 api_key: state.config.apiKey,
                 base_url: state.config.baseUrl,
                 model: elements.headerModelSelect.value || state.config.defaultModel,
-                system_prompt: state.activeThread?.system_prompt || state.config.systemPrompt,
                 temperature: state.config.temperature,
                 grounded_agent_id: state.config.groundedAgentId,
                 grounded_api_key: state.config.groundedApiKey
@@ -804,17 +788,7 @@ function setupEventListeners() {
         elements.tempValDisplay.textContent = e.target.value;
     };
     
-    elements.btnEditPrompt.onclick = () => {
-        elements.threadPromptInput.value = state.activeThread?.system_prompt || state.config.systemPrompt;
-        elements.promptModal.classList.remove("hidden");
-    };
-    elements.btnClosePromptModal.onclick = () => elements.promptModal.classList.add("hidden");
-    elements.btnSaveThreadPrompt.onclick = async () => {
-        const newPrompt = elements.threadPromptInput.value.trim();
-        await updateThreadOnServer(state.activeThreadId, { system_prompt: newPrompt });
-        elements.promptModal.classList.add("hidden");
-        elements.systemPromptPreview.textContent = `System: ${newPrompt.substring(0, 32)}${newPrompt.length > 32 ? '...' : ''}`;
-    };
+
     
     elements.headerModelSelect.onchange = async (e) => {
         const selectedModel = e.target.value;
@@ -849,7 +823,6 @@ function saveSettings() {
     state.config.apiKey = elements.settingApiKey.value.trim();
     state.config.baseUrl = elements.settingBaseUrl.value.trim();
     state.config.defaultModel = elements.settingDefaultModel.value.trim();
-    state.config.systemPrompt = elements.settingSystemPrompt.value.trim();
     state.config.temperature = parseFloat(elements.settingTemperature.value);
     
     if (elements.settingGroundedAgentId) {
@@ -864,7 +837,6 @@ function saveSettings() {
     localStorage.setItem("scx_api_key", state.config.apiKey);
     localStorage.setItem("scx_base_url", state.config.baseUrl);
     localStorage.setItem("scx_default_model", state.config.defaultModel);
-    localStorage.setItem("scx_system_prompt", state.config.systemPrompt);
     localStorage.setItem("scx_temperature", state.config.temperature);
     
     updateAPIStatusBadge();
