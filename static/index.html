@@ -91,6 +91,12 @@
                 </div>
 
                 <div class="header-right">
+                    <button id="btn-open-folder-docs" class="folder-docs-btn" title="Train & Manage Global Documents (/chat Endpoint)">
+                        <i data-lucide="database"></i>
+                        <span>Global Trained Docs</span>
+                        <span id="global-docs-count-badge" class="count-badge">0</span>
+                    </button>
+
                     <!-- Model Selector -->
                     <div class="model-selector-wrapper">
                         <i data-lucide="sparkles" class="selector-icon"></i>
@@ -101,7 +107,6 @@
                             <option value="DeepSeek-R1">DeepSeek R1</option>
                         </select>
                     </div>
-
 
                     <button id="btn-export-chat" class="icon-button" title="Export Chat">
                         <i data-lucide="download"></i>
@@ -258,6 +263,55 @@
         </div>
     </div>
 
+    <!-- Global Folder Documents Modal (/chat Endpoint Knowledge Base) -->
+    <div id="folder-docs-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3><i data-lucide="database" style="color: var(--accent-green);"></i> Global Trained Documents Knowledge Base</h3>
+                <button id="btn-close-folder-docs" class="icon-button"><i data-lucide="x"></i></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="knowledge-banner">
+                    <i data-lucide="info" style="color: var(--accent-blue); width: 20px; height: 20px; flex-shrink:0;"></i>
+                    <p>
+                        Documents uploaded here are saved directly into the server's <code>documents/</code> folder. 
+                        They are trained automatically and used by the <strong>/chat</strong> API endpoint and all chat sessions to provide instant document-grounded answers.
+                    </p>
+                </div>
+
+                <!-- Upload Drop Zone -->
+                <div class="upload-drop-zone" id="folder-doc-drop-zone">
+                    <i data-lucide="file-up" class="drop-icon"></i>
+                    <h4>Upload & Train New Document</h4>
+                    <p>Supports PDF, DOCX, TXT, MD, CSV, JSON (Up to 20MB)</p>
+                    <input type="file" id="folder-doc-file-input" accept=".pdf,.docx,.txt,.md,.csv,.json" style="display:none;">
+                    <button id="btn-trigger-folder-upload" class="btn-primary" type="button">
+                        <i data-lucide="plus"></i> Choose File to Train
+                    </button>
+                </div>
+
+                <div id="folder-upload-status" class="status-banner hidden"></div>
+
+                <!-- Trained Documents List -->
+                <div class="folder-docs-list-section">
+                    <div class="section-header">
+                        <h4>Currently Trained Documents (<span id="folder-docs-count-text">0</span>)</h4>
+                        <button id="btn-refresh-folder-docs" class="icon-button" title="Sync / Refresh Knowledge Base">
+                            <i data-lucide="refresh-cw"></i>
+                        </button>
+                    </div>
+                    <div id="folder-docs-list" class="folder-docs-list">
+                        <!-- Populated dynamically via app.js -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btn-close-folder-docs-footer" class="btn-secondary" type="button">Close</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Custom JS Script -->
     <script src="/static/app.js"></script>

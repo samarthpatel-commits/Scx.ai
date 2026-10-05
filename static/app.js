@@ -57,7 +57,21 @@ const elements = {
     settingGroundedAgentId: document.getElementById("setting-grounded-agent-id"),
     settingGroundedApiKey: document.getElementById("setting-grounded-api-key"),
     tempValDisplay: document.getElementById("temp-val-display"),
-    btnSaveSettings: document.getElementById("btn-save-settings")
+    btnSaveSettings: document.getElementById("btn-save-settings"),
+
+    // Global Folder Documents Modal Elements
+    btnOpenFolderDocs: document.getElementById("btn-open-folder-docs"),
+    folderDocsModal: document.getElementById("folder-docs-modal"),
+    btnCloseFolderDocs: document.getElementById("btn-close-folder-docs"),
+    btnCloseFolderDocsFooter: document.getElementById("btn-close-folder-docs-footer"),
+    btnTriggerFolderUpload: document.getElementById("btn-trigger-folder-upload"),
+    folderDocFileInput: document.getElementById("folder-doc-file-input"),
+    folderUploadStatus: document.getElementById("folder-upload-status"),
+    folderDocsList: document.getElementById("folder-docs-list"),
+    folderDocsCountBadge: document.getElementById("global-docs-count-badge"),
+    folderDocsCountText: document.getElementById("folder-docs-count-text"),
+    btnRefreshFolderDocs: document.getElementById("btn-refresh-folder-docs"),
+    folderDocDropZone: document.getElementById("folder-doc-drop-zone")
 };
 
 // Initialize Application
@@ -75,6 +89,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     await fetchBackendConfig();
     await loadThreads();
+    await fetchFolderDocuments();
     
     if (state.threads.length > 0) {
         selectThread(state.threads[0].id);
@@ -810,6 +825,166 @@ function setupEventListeners() {
     };
     
     elements.btnExportChat.onclick = exportCurrentChat;
+
+    // Folder Documents Modal Event Listeners
+    if (elements.btnOpenFolderDocs) {
+        elements.btnOpenFolderDocs.onclick = () => {
+            fetchFolderDocuments();
+            elements.folderDocsModal.classList.remove("hidden");
+        };
+    }
+    if (elements.btnCloseFolderDocs) {
+        elements.btnCloseFolderDocs.onclick = () => {
+            elements.folderDocsModal.classList.add("hidden");
+        };
+    }
+    if (elements.btnCloseFolderDocsFooter) {
+        elements.btnCloseFolderDocsFooter.onclick = () => {
+            elements.folderDocsModal.classList.add("hidden");
+        };
+    }
+    if (elements.btnTriggerFolderUpload) {
+        elements.btnTriggerFolderUpload.onclick = () => {
+            elements.folderDocFileInput.click();
+        };
+    }
+    if (elements.folderDocFileInput) {
+        elements.folderDocFileInput.onchange = (e) => {
+            if (e.target.files && e.target.files[0]) {
+                handleFolderDocUpload(e.target.files[0]);
+            }
+        };
+    }
+    if (elements.btnRefreshFolderDocs) {
+        elements.btnRefreshFolderDocs.onclick = () => {
+            fetchFolderDocuments();
+        };
+    }
+
+    // Drag and drop for folder doc upload
+    if (elements.folderDocDropZone) {
+        elements.folderDocDropZone.ondragover = (e) => {
+            e.preventDefault();
+            elements.folderDocDropZone.classList.add("dragover");
+        };
+        elements.folderDocDropZone.ondragleave = () => {
+            elements.folderDocDropZone.classList.remove("dragover");
+        };
+        elements.folderDocDropZone.ondrop = (e) => {
+            e.preventDefault();
+            elements.folderDocDropZone.classList.remove("dragover");
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleFolderDocUpload(e.dataTransfer.files[0]);
+            }
+        };
+    }
+}
+
+// Global Folder Documents API Functions
+async function fetchFolderDocuments() {
+    try {
+        const res = await fetch("/api/folder-documents");
+        if (res.ok) {
+            const docs = await res.json();
+            renderFolderDocsList(docs);
+        }
+    } catch (e) {
+        console.error("Failed to fetch folder documents:", e);
+    }
+}
+
+function renderFolderDocsList(docs) {
+    const count = docs ? docs.length : 0;
+    if (elements.folderDocsCountBadge) elements.folderDocsCountBadge.textContent = count;
+    if (elements.folderDocsCountText) elements.folderDocsCountText.textContent = count;
+    
+    if (!elements.folderDocsList) return;
+    elements.folderDocsList.innerHTML = "";
+    
+    if (!docs || docs.length === 0) {
+        elements.folderDocsList.innerHTML = `<div style="text-align:center; color: var(--text-muted); font-size:0.85rem; padding: 20px;">No trained documents found in <code>documents/</code> folder. Upload a file above to begin.</div>`;
+        return;
+    }
+    
+    docs.forEach(doc => {
+        const item = document.createElement("div");
+        item.className = "doc-card-item";
+        
+        const sizeKb = (doc.file_size / 1024).toFixed(1);
+        item.innerHTML = `
+            <div class="doc-card-info">
+                <i data-lucide="file-text" class="doc-card-icon"></i>
+                <div class="doc-card-meta">
+                    <span class="doc-card-name">${escapeHtml(doc.filename)}</span>
+                    <span class="doc-card-sub">${doc.file_type.toUpperCase()} • ${sizeKb} KB • ${doc.text_length.toLocaleString()} chars</span>
+                </div>
+            </div>
+            <button class="icon-button danger btn-delete-folder-doc" title="Delete from Knowledge Base">
+                <i data-lucide="trash-2"></i>
+            </button>
+        `;
+        
+        const deleteBtn = item.querySelector(".btn-delete-folder-doc");
+        deleteBtn.onclick = () => deleteFolderDocument(doc.filename);
+        
+        elements.folderDocsList.appendChild(item);
+    });
+    
+    initLucideIcons();
+}
+
+async function handleFolderDocUpload(file) {
+    if (!file) return;
+    
+    showFolderStatus("Uploading and training document...", "info");
+    
+    const formData = new FormData();
+    formData.append("file", file);
+    
+    try {
+        const res = await fetch("/api/folder-documents/upload", {
+            method: "POST",
+            body: formData
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            showFolderStatus(`Success! Document '${file.name}' saved to documents/ folder and trained for /chat endpoint.`, "success");
+            fetchFolderDocuments();
+        } else {
+            const err = await res.json();
+            showFolderStatus(`Upload failed: ${err.detail || 'Unknown error'}`, "error");
+        }
+    } catch (e) {
+        showFolderStatus(`Error uploading file: ${e.message}`, "error");
+    }
+}
+
+async function deleteFolderDocument(filename) {
+    if (!confirm(`Are you sure you want to remove '${filename}' from the global trained documents knowledge base?`)) return;
+    
+    try {
+        const res = await fetch(`/api/folder-documents/${encodeURIComponent(filename)}`, {
+            method: "DELETE"
+        });
+        if (res.ok) {
+            showFolderStatus(`Removed '${filename}' from documents folder.`, "success");
+            fetchFolderDocuments();
+        } else {
+            const err = await res.json();
+            showFolderStatus(`Failed to delete document: ${err.detail || 'Error'}`, "error");
+        }
+    } catch (e) {
+        showFolderStatus(`Error deleting document: ${e.message}`, "error");
+    }
+}
+
+function showFolderStatus(msg, type = "info") {
+    if (!elements.folderUploadStatus) return;
+    elements.folderUploadStatus.className = `status-banner ${type}`;
+    elements.folderUploadStatus.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle' : type === 'error' ? 'alert-triangle' : 'loader'}" style="width:16px; height:16px;"></i> <span>${escapeHtml(msg)}</span>`;
+    elements.folderUploadStatus.classList.remove("hidden");
+    initLucideIcons();
 }
 
 function openSettingsModal() {
