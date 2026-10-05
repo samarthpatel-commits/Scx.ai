@@ -72,6 +72,54 @@ def extract_text_from_file(filename: str, file_bytes: bytes) -> str:
         
     return text.strip()
 
+# Folder Document Knowledge Base directory
+DOCUMENTS_DIR = os.getenv("DOCUMENTS_DIR", os.path.join(os.path.dirname(__file__), "documents"))
+os.makedirs(DOCUMENTS_DIR, exist_ok=True)
+
+def extract_text_from_path(filepath: str) -> str:
+    try:
+        with open(filepath, "rb") as f:
+            file_bytes = f.read()
+        return extract_text_from_file(os.path.basename(filepath), file_bytes)
+    except Exception as e:
+        print(f"Error reading file {filepath}: {e}")
+        return ""
+
+def load_folder_documents() -> List[Dict[str, Any]]:
+    docs = []
+    if not os.path.exists(DOCUMENTS_DIR):
+        return docs
+        
+    for root, dirs, files in os.walk(DOCUMENTS_DIR):
+        for filename in files:
+            filepath = os.path.join(root, filename)
+            rel_path = os.path.relpath(filepath, DOCUMENTS_DIR)
+            try:
+                text = extract_text_from_path(filepath)
+                if text and text.strip():
+                    docs.append({
+                        "filename": rel_path,
+                        "content": text.strip(),
+                        "size": os.path.getsize(filepath),
+                        "ext": os.path.splitext(filename)[1].lower().replace(".", "")
+                    })
+            except Exception as e:
+                print(f"Error loading document from folder {filepath}: {e}")
+    return docs
+
+def get_folder_documents_context() -> str:
+    docs = load_folder_documents()
+    if not docs:
+        return ""
+        
+    doc_parts = []
+    for d in docs:
+        content_snippet = d["content"][:6000]
+        doc_parts.append(f"--- FOLDER DOCUMENT: {d['filename']} ---\n{content_snippet}")
+        
+    return "\n\n".join(doc_parts)
+
+
 # Grounded AI Evaluation & Verification Call
 def monitor_grounded(question: str, response: str, agent_id: Optional[str] = None, api_key: Optional[str] = None) -> Dict[str, Any]:
     target_agent_id = agent_id or GROUNDED_AGENT_ID
@@ -437,18 +485,25 @@ async def chat_stream(request_data: ChatRequest, x_api_key: Optional[str] = Head
     base_url = request_data.base_url or DEFAULT_BASE_URL
     model_name = request_data.model or thread["model"] or DEFAULT_MODEL
     
-    # Fetch thread documents for RAG context
+    # Fetch thread documents & folder documents for RAG context
     cursor.execute("SELECT filename, content FROM documents WHERE thread_id = ?", (request_data.thread_id,))
     docs = cursor.fetchall()
     
-    doc_context_str = ""
+    folder_context = get_folder_documents_context()
+    
+    thread_doc_parts = []
     if docs:
-        doc_parts = []
         for d in docs:
-            # Truncate per document content if too long for prompt window
-            content_snippet = d["content"][:4000]
-            doc_parts.append(f"--- DOCUMENT: {d['filename']} ---\n{content_snippet}")
-        doc_context_str = "\n\n".join(doc_parts)
+            thread_doc_parts.append(f"--- UPLOADED DOCUMENT: {d['filename']} ---\n{d['content'][:4000]}")
+    thread_context = "\n\n".join(thread_doc_parts)
+    
+    doc_context_parts = []
+    if folder_context:
+        doc_context_parts.append(folder_context)
+    if thread_context:
+        doc_context_parts.append(thread_context)
+        
+    doc_context_str = "\n\n".join(doc_context_parts)
 
     now = datetime.utcnow().isoformat()
     
@@ -601,14 +656,32 @@ async def open_public_chat(data: OpenIntegrationRequest):
     conn.commit()
     conn.close()
     
-    doc_context_str = ""
+    folder_context = get_folder_documents_context()
+    
+    thread_doc_parts = []
     if docs:
-        doc_parts = [f"--- DOCUMENT: {d['filename']} ---\n{d['content'][:4000]}" for d in docs]
-        doc_context_str = "\n\n".join(doc_parts)
+        for d in docs:
+            thread_doc_parts.append(f"--- UPLOADED DOCUMENT: {d['filename']} ---\n{d['content'][:4000]}")
+    thread_context = "\n\n".join(thread_doc_parts)
+    
+    doc_context_parts = []
+    if folder_context:
+        doc_context_parts.append(folder_context)
+    if thread_context:
+        doc_context_parts.append(thread_context)
+        
+    doc_context_str = "\n\n".join(doc_context_parts)
 
     formatted_msgs = []
     if doc_context_str:
-        formatted_msgs.append({"role": "system", "content": f"DOCUMENT KNOWLEDGE BASE:\n{doc_context_str}\n\nINSTRUCTION: Answer strictly based on the Document Knowledge Base."})
+        formatted_msgs.append({
+            "role": "system",
+            "content": (
+                "DOCUMENT KNOWLEDGE BASE (Trained/Loaded from documents folder & uploaded files):\n"
+                f"{doc_context_str}\n\n"
+                "INSTRUCTION: You must answer the user's question accurately based on the Document Knowledge Base provided above. Cite filenames when relevant."
+            )
+        })
     for row in history_rows:
         formatted_msgs.append({"role": row["role"], "content": row["content"]})
 
@@ -656,6 +729,61 @@ async def open_public_chat(data: OpenIntegrationRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Folder Document Management Endpoints (Global documents folder)
+@app.get("/api/folder-documents")
+def list_folder_documents_api():
+    docs = load_folder_documents()
+    res = []
+    for d in docs:
+        res.append({
+            "filename": d["filename"],
+            "file_type": d["ext"],
+            "file_size": d["size"],
+            "text_length": len(d["content"]),
+            "preview": d["content"][:200] + "..." if len(d["content"]) > 200 else d["content"]
+        })
+    return res
+
+@app.post("/api/folder-documents/upload")
+async def upload_folder_document(file: UploadFile = File(...)):
+    file_bytes = await file.read()
+    if len(file_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size exceeds 20MB limit.")
+        
+    extracted_text = extract_text_from_file(file.filename, file_bytes)
+    if not extracted_text:
+        raise HTTPException(status_code=400, detail="Could not extract text from uploaded document.")
+        
+    save_path = os.path.join(DOCUMENTS_DIR, file.filename)
+    with open(save_path, "wb") as f:
+        f.write(file_bytes)
+        
+    return {
+        "status": "success",
+        "filename": file.filename,
+        "file_size": len(file_bytes),
+        "text_length": len(extracted_text),
+        "message": f"Document '{file.filename}' saved to documents folder and available for training/answering."
+    }
+
+@app.delete("/api/folder-documents/{filename:path}")
+def delete_folder_document(filename: str):
+    file_path = os.path.join(DOCUMENTS_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found in documents folder")
+        
+    os.remove(file_path)
+    return {"status": "deleted", "filename": filename}
+
+@app.post("/api/folder-documents/sync")
+def sync_folder_documents():
+    docs = load_folder_documents()
+    return {
+        "status": "synced",
+        "count": len(docs),
+        "files": [d["filename"] for d in docs]
+    }
 
 # Static Files & Frontend Serving
 app.mount("/static", StaticFiles(directory="static"), name="static")

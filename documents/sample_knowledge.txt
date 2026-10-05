@@ -1,0 +1,14 @@
+SCX.AI Knowledge Base Document
+=================================
+Company: SCX AI Technologies
+Product: SCX ChatBot v2.0
+Description: SCX ChatBot is an advanced AI assistant featuring multi-model orchestration, real-time Grounded AI response verification, document RAG index training, and thread management.
+
+Key Features & Specifications:
+1. Document Training: Users can place PDF, DOCX, TXT, MD, CSV files into the `documents/` folder. The system automatically reads and trains on these documents.
+2. API Endpoint `/chat`: Accepts JSON with `{"message": "your question"}`. It answers questions using the data inside the `documents/` folder.
+3. Grounded AI Verification: Automatically monitors and scores AI responses for factual consistency and hallucination prevention.
+4. Support Models: Meta-Llama-3.3-70B-Instruct, Meta-Llama-3.1-405B-Instruct, Qwen/Qwen2.5-72B-Instruct, DeepSeek-R1.
+
+Contact Support: support@scx.ai
+Office Address: 100 Tech Park Way, Suite 400, Innovation City.
