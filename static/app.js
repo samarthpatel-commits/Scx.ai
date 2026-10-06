@@ -41,6 +41,17 @@ const elements = {
     btnStopGen: document.getElementById("btn-stop-gen"),
     charCount: document.getElementById("char-count"),
     
+    // Voice Assistant Elements
+    btnVoiceAssistant: document.getElementById("btn-voice-assistant"),
+    voiceModal: document.getElementById("voice-modal"),
+    btnCloseVoiceModal: document.getElementById("btn-close-voice-modal"),
+    btnCancelVoice: document.getElementById("btn-cancel-voice"),
+    btnStopTranscribeVoice: document.getElementById("btn-stop-transcribe-voice"),
+    voiceStatusTitle: document.getElementById("voice-status-title"),
+    voiceStatusSubtitle: document.getElementById("voice-status-subtitle"),
+    voicePreviewText: document.getElementById("voice-preview-text"),
+
+    
     // Document Upload Elements
     btnUploadDoc: document.getElementById("btn-upload-doc"),
     fileInputElement: document.getElementById("file-input-element"),
@@ -775,6 +786,20 @@ function setupEventListeners() {
     elements.btnSend.onclick = handleSendMessage;
     elements.btnStopGen.onclick = stopGeneration;
     
+    // Voice Assistant Event Bindings
+    if (elements.btnVoiceAssistant) {
+        elements.btnVoiceAssistant.onclick = () => startVoiceAssistant();
+    }
+    if (elements.btnCloseVoiceModal) {
+        elements.btnCloseVoiceModal.onclick = () => cancelVoiceAssistant();
+    }
+    if (elements.btnCancelVoice) {
+        elements.btnCancelVoice.onclick = () => cancelVoiceAssistant();
+    }
+    if (elements.btnStopTranscribeVoice) {
+        elements.btnStopTranscribeVoice.onclick = () => stopVoiceAssistant(true);
+    }
+    
     elements.userInput.onkeydown = (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -802,6 +827,7 @@ function setupEventListeners() {
     elements.settingTemperature.oninput = (e) => {
         elements.tempValDisplay.textContent = e.target.value;
     };
+
     
 
     
@@ -1049,3 +1075,171 @@ function escapeHtml(str) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
 }
+
+// Voice Assistant Functions (Whisper ASR Integration)
+const voiceState = {
+    mediaRecorder: null,
+    audioChunks: [],
+    stream: null,
+    recognition: null,
+    isRecording: false,
+    transcribedText: ""
+};
+
+function startVoiceAssistant() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Audio recording is not supported in this browser.");
+        return;
+    }
+
+    voiceState.audioChunks = [];
+    voiceState.transcribedText = "";
+    voiceState.isRecording = true;
+
+    if (elements.voicePreviewText) {
+        elements.voicePreviewText.textContent = "Listening... Speak into microphone";
+        elements.voicePreviewText.classList.add("placeholder-text");
+    }
+    if (elements.voiceStatusTitle) {
+        elements.voiceStatusTitle.textContent = "Listening to your voice...";
+    }
+    if (elements.voiceStatusSubtitle) {
+        elements.voiceStatusSubtitle.textContent = "Speak clearly into your microphone. Powered by SCX Whisper-Large-v3 ASR.";
+    }
+
+    if (elements.voiceModal) {
+        elements.voiceModal.classList.remove("hidden");
+    }
+
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        voiceState.stream = stream;
+        voiceState.mediaRecorder = new MediaRecorder(stream);
+        
+        voiceState.mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+                voiceState.audioChunks.push(e.data);
+            }
+        };
+
+        voiceState.mediaRecorder.start();
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            try {
+                voiceState.recognition = new SpeechRecognition();
+                voiceState.recognition.continuous = true;
+                voiceState.recognition.interimResults = true;
+                
+                voiceState.recognition.onresult = (event) => {
+                    let currentTranscript = "";
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        currentTranscript += event.results[i][0].transcript;
+                    }
+                    if (currentTranscript.trim()) {
+                        voiceState.transcribedText = currentTranscript.trim();
+                        if (elements.voicePreviewText) {
+                            elements.voicePreviewText.textContent = voiceState.transcribedText;
+                            elements.voicePreviewText.classList.remove("placeholder-text");
+                        }
+                    }
+                };
+                
+                voiceState.recognition.start();
+            } catch (err) {
+                console.log("Web Speech preview unavailable:", err);
+            }
+        }
+    }).catch(err => {
+        alert("Microphone access failed or permission denied: " + err.message);
+        closeVoiceModal();
+    });
+}
+
+function stopVoiceAssistant(sendToChat = true) {
+    if (!voiceState.isRecording) {
+        closeVoiceModal();
+        return;
+    }
+
+    voiceState.isRecording = false;
+
+    if (voiceState.recognition) {
+        try { voiceState.recognition.stop(); } catch(e){}
+    }
+
+    if (elements.voiceStatusTitle) {
+        elements.voiceStatusTitle.textContent = "Transcribing with SCX Whisper-Large-v3...";
+    }
+    if (elements.voiceStatusSubtitle) {
+        elements.voiceStatusSubtitle.textContent = "Converting audio to text via SCX.AI engine...";
+    }
+
+    if (voiceState.mediaRecorder && voiceState.mediaRecorder.state !== "inactive") {
+        voiceState.mediaRecorder.onstop = async () => {
+            if (voiceState.stream) {
+                voiceState.stream.getTracks().forEach(track => track.stop());
+            }
+
+            const audioBlob = new Blob(voiceState.audioChunks, { type: "audio/webm" });
+            let finalTranscribedText = voiceState.transcribedText;
+
+            try {
+                const formData = new FormData();
+                formData.append("file", audioBlob, "voice_recording.webm");
+
+                const res = await fetch("/api/audio/transcribe", {
+                    method: "POST",
+                    headers: {
+                        "x-api-key": state.config.apiKey
+                    },
+                    body: formData
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.text && data.text.trim()) {
+                        finalTranscribedText = data.text.trim();
+                    }
+                }
+            } catch (err) {
+                console.warn("Backend Whisper transcription error, using Web Speech text fallback:", err);
+            }
+
+            closeVoiceModal();
+
+            if (finalTranscribedText && finalTranscribedText.trim()) {
+                elements.userInput.value = finalTranscribedText.trim();
+                elements.userInput.style.height = "auto";
+                elements.userInput.style.height = `${Math.min(elements.userInput.scrollHeight, 180)}px`;
+                elements.charCount.textContent = `${finalTranscribedText.length} chars`;
+
+                if (sendToChat) {
+                    handleSendMessage();
+                }
+            }
+        };
+
+        voiceState.mediaRecorder.stop();
+    } else {
+        closeVoiceModal();
+    }
+}
+
+function cancelVoiceAssistant() {
+    voiceState.isRecording = false;
+    if (voiceState.recognition) {
+        try { voiceState.recognition.stop(); } catch(e){}
+    }
+    if (voiceState.stream) {
+        voiceState.stream.getTracks().forEach(track => track.stop());
+    }
+    closeVoiceModal();
+}
+
+function closeVoiceModal() {
+    voiceState.isRecording = false;
+    if (elements.voiceModal) {
+        elements.voiceModal.classList.add("hidden");
+    }
+}
+

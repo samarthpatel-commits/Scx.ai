@@ -179,6 +179,9 @@
                         <input type="file" id="file-input-element" accept=".pdf,.docx,.txt,.md,.csv,.json,.py,.js" style="display:none;">
 
                         <div class="input-actions">
+                            <button id="btn-voice-assistant" class="btn-voice" title="SCX Voice Assistant (Whisper ASR)">
+                                <i data-lucide="mic"></i>
+                            </button>
                             <button id="btn-stop-gen" class="btn-stop hidden" title="Stop Generation">
                                 <i data-lucide="square" style="width: 12px; height: 12px;"></i>
                                 <span>Stop</span>
@@ -190,9 +193,10 @@
                     </div>
                     
                     <div class="input-footer">
-                        <span>SCX.AI Engine • Meta-Llama-3.3-70B</span>
+                        <span>SCX.AI Engine • Meta-Llama-3.3-70B • Whisper-Large-v3 Voice</span>
                         <span class="char-count" id="char-count">0 chars</span>
                     </div>
+
 
                 </div>
             </div>
@@ -313,7 +317,47 @@
         </div>
     </div>
 
+    <!-- Voice Assistant Modal Overlay -->
+    <div id="voice-modal" class="modal-overlay hidden">
+        <div class="modal-content voice-modal-content">
+            <div class="modal-header">
+                <h3><i data-lucide="mic" style="color: var(--accent-green);"></i> SCX Voice Assistant</h3>
+                <button id="btn-close-voice-modal" class="icon-button"><i data-lucide="x"></i></button>
+            </div>
+
+            <div class="voice-modal-body">
+                <div class="voice-visualizer-container">
+                    <div class="pulse-ring ring-1"></div>
+                    <div class="pulse-ring ring-2"></div>
+                    <div class="pulse-ring ring-3"></div>
+                    <div class="mic-sphere" id="mic-sphere">
+                        <i data-lucide="mic" class="mic-icon-large"></i>
+                    </div>
+                </div>
+
+                <div class="voice-status-wrapper">
+                    <h4 id="voice-status-title">Listening to your voice...</h4>
+                    <p id="voice-status-subtitle">Speak clearly into your microphone. Powered by SCX Whisper-Large-v3 ASR.</p>
+                </div>
+
+                <div id="voice-live-preview" class="voice-live-preview">
+                    <span id="voice-preview-text" class="placeholder-text">Listening... Speak now</span>
+                </div>
+            </div>
+
+            <div class="modal-footer voice-modal-footer">
+                <button id="btn-cancel-voice" class="btn-secondary" type="button">
+                    <i data-lucide="x-circle"></i> Cancel
+                </button>
+                <button id="btn-stop-transcribe-voice" class="btn-primary voice-send-btn" type="button">
+                    <i data-lucide="send"></i> Done & Send Message
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Custom JS Script -->
+
     <script src="/static/app.js"></script>
 </body>
 </html>

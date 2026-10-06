@@ -432,7 +432,45 @@ def get_config(request: Request):
         ]
     }
 
+# Audio Transcription API (SCX Whisper-Large-v3 ASR)
+@app.post("/api/audio/transcribe")
+async def transcribe_audio(request: Request, file: UploadFile = File(...)):
+    verify_auth(request)
+    file_bytes = await file.read()
+    if len(file_bytes) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Audio file size exceeds 25MB Whisper limit.")
+        
+    api_key = DEFAULT_API_KEY
+    if not api_key:
+        raise HTTPException(status_code=400, detail="SCX API Key is not configured on server.")
+
+    clean_filename = os.path.basename(file.filename) or "voice_recording.webm"
+    if "." not in clean_filename:
+        clean_filename += ".webm"
+
+    try:
+        client = AsyncOpenAI(
+            base_url=DEFAULT_BASE_URL,
+            api_key=api_key
+        )
+        
+        transcript = await client.audio.transcriptions.create(
+            model="Whisper-Large-v3",
+            file=(clean_filename, file_bytes)
+        )
+        
+        text = transcript.text if hasattr(transcript, "text") else (transcript.get("text", "") if isinstance(transcript, dict) else str(transcript))
+        return {
+            "status": "success",
+            "text": str(text).strip(),
+            "filename": clean_filename,
+            "bytes": len(file_bytes)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audio transcription error: {str(e)}")
+
 # Document Management APIs
+
 @app.post("/api/threads/{thread_id}/documents")
 async def upload_document(thread_id: str, request: Request, file: UploadFile = File(...)):
     verify_auth(request)
