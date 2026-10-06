@@ -46,10 +46,15 @@ const elements = {
     voiceModal: document.getElementById("voice-modal"),
     btnCloseVoiceModal: document.getElementById("btn-close-voice-modal"),
     btnCancelVoice: document.getElementById("btn-cancel-voice"),
-    btnStopTranscribeVoice: document.getElementById("btn-stop-transcribe-voice"),
+    btnSaveVoiceTranscript: document.getElementById("btn-save-voice-transcript"),
+    btnInterruptVoice: document.getElementById("btn-interrupt-voice"),
     voiceStatusTitle: document.getElementById("voice-status-title"),
     voiceStatusSubtitle: document.getElementById("voice-status-subtitle"),
     voicePreviewText: document.getElementById("voice-preview-text"),
+    voiceAssistantPreview: document.getElementById("voice-assistant-preview"),
+    voiceStateBadge: document.getElementById("voice-state-badge"),
+    micSphere: document.getElementById("mic-sphere"),
+    voiceVisualizer: document.getElementById("voice-visualizer"),
 
     
     // Document Upload Elements
@@ -791,13 +796,16 @@ function setupEventListeners() {
         elements.btnVoiceAssistant.onclick = () => startVoiceAssistant();
     }
     if (elements.btnCloseVoiceModal) {
-        elements.btnCloseVoiceModal.onclick = () => cancelVoiceAssistant();
+        elements.btnCloseVoiceModal.onclick = () => closeVoiceModal();
     }
     if (elements.btnCancelVoice) {
-        elements.btnCancelVoice.onclick = () => cancelVoiceAssistant();
+        elements.btnCancelVoice.onclick = () => closeVoiceModal();
     }
-    if (elements.btnStopTranscribeVoice) {
-        elements.btnStopTranscribeVoice.onclick = () => stopVoiceAssistant(true);
+    if (elements.btnSaveVoiceTranscript) {
+        elements.btnSaveVoiceTranscript.onclick = () => saveVoiceTranscript();
+    }
+    if (elements.btnInterruptVoice) {
+        elements.btnInterruptVoice.onclick = () => handleVoiceInterruptOrSpeak();
     }
     
     elements.userInput.onkeydown = (e) => {
@@ -1077,14 +1085,61 @@ function escapeHtml(str) {
 }
 
 // Voice Assistant Functions (Whisper ASR Integration)
+// Voice Assistant Functions (ChatGPT-like Voice Mode with SCX.ai TTS Integration)
 const voiceState = {
+    active: false,
+    state: "idle", // "listening" | "processing" | "speaking" | "idle"
     mediaRecorder: null,
     audioChunks: [],
     stream: null,
     recognition: null,
-    isRecording: false,
-    transcribedText: ""
+    userTranscript: "",
+    assistantText: "",
+    currentAudio: null
 };
+
+function setVoiceState(newState, title, subtitle) {
+    voiceState.state = newState;
+    
+    if (elements.voiceStateBadge) {
+        elements.voiceStateBadge.className = `voice-state-badge badge-${newState}`;
+        const labelMap = {
+            listening: "● Listening",
+            processing: "● Processing",
+            speaking: "● Speaking",
+            idle: "● Idle"
+        };
+        elements.voiceStateBadge.textContent = labelMap[newState] || `● ${newState}`;
+    }
+
+    if (elements.micSphere) {
+        elements.micSphere.className = `mic-sphere ${newState !== 'listening' ? 'state-' + newState : ''}`;
+    }
+    if (elements.voiceVisualizer) {
+        elements.voiceVisualizer.className = `voice-visualizer-container ${newState !== 'listening' ? 'visualizer-' + newState : ''}`;
+    }
+
+    if (elements.voiceStatusTitle && title) {
+        elements.voiceStatusTitle.textContent = title;
+    }
+    if (elements.voiceStatusSubtitle && subtitle) {
+        elements.voiceStatusSubtitle.textContent = subtitle;
+    }
+
+    if (elements.btnInterruptVoice) {
+        if (newState === "speaking") {
+            elements.btnInterruptVoice.innerHTML = `<i data-lucide="square" style="width:14px; height:14px;"></i> Interrupt AI`;
+            elements.btnInterruptVoice.className = "btn-primary voice-action-btn danger-btn";
+        } else if (newState === "listening") {
+            elements.btnInterruptVoice.innerHTML = `<i data-lucide="check" style="width:14px; height:14px;"></i> Done Speaking`;
+            elements.btnInterruptVoice.className = "btn-primary voice-action-btn";
+        } else {
+            elements.btnInterruptVoice.innerHTML = `<i data-lucide="mic" style="width:14px; height:14px;"></i> Speak`;
+            elements.btnInterruptVoice.className = "btn-primary voice-action-btn";
+        }
+        initLucideIcons();
+    }
+}
 
 function startVoiceAssistant() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1092,29 +1147,43 @@ function startVoiceAssistant() {
         return;
     }
 
-    voiceState.audioChunks = [];
-    voiceState.transcribedText = "";
-    voiceState.isRecording = true;
-
-    if (elements.voicePreviewText) {
-        elements.voicePreviewText.textContent = "Listening... Speak into microphone";
-        elements.voicePreviewText.classList.add("placeholder-text");
-    }
-    if (elements.voiceStatusTitle) {
-        elements.voiceStatusTitle.textContent = "Listening to your voice...";
-    }
-    if (elements.voiceStatusSubtitle) {
-        elements.voiceStatusSubtitle.textContent = "Speak clearly into your microphone. Powered by SCX Whisper-Large-v3 ASR.";
-    }
-
+    voiceState.active = true;
     if (elements.voiceModal) {
         elements.voiceModal.classList.remove("hidden");
     }
 
+    startListening();
+}
+
+function startListening() {
+    if (!voiceState.active) return;
+
+    stopAudioPlayback();
+
+    voiceState.audioChunks = [];
+    voiceState.userTranscript = "";
+    voiceState.assistantText = "";
+
+    setVoiceState("listening", "Listening to your voice...", "Speak clearly into your microphone. Powered by SCX Whisper-Large-v3 ASR & SCX TTS.");
+
+    if (elements.voicePreviewText) {
+        elements.voicePreviewText.textContent = "Listening... Speak now";
+        elements.voicePreviewText.classList.add("placeholder-text");
+    }
+    if (elements.voiceAssistantPreview) {
+        elements.voiceAssistantPreview.textContent = "Waiting for speech input...";
+        elements.voiceAssistantPreview.classList.add("placeholder-text");
+    }
+
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        if (!voiceState.active) {
+            stream.getTracks().forEach(t => t.stop());
+            return;
+        }
+
         voiceState.stream = stream;
         voiceState.mediaRecorder = new MediaRecorder(stream);
-        
+
         voiceState.mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0) {
                 voiceState.audioChunks.push(e.data);
@@ -1126,27 +1195,30 @@ function startVoiceAssistant() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             try {
+                if (voiceState.recognition) {
+                    try { voiceState.recognition.stop(); } catch(e){}
+                }
                 voiceState.recognition = new SpeechRecognition();
                 voiceState.recognition.continuous = true;
                 voiceState.recognition.interimResults = true;
-                
+
                 voiceState.recognition.onresult = (event) => {
                     let currentTranscript = "";
                     for (let i = event.resultIndex; i < event.results.length; i++) {
                         currentTranscript += event.results[i][0].transcript;
                     }
                     if (currentTranscript.trim()) {
-                        voiceState.transcribedText = currentTranscript.trim();
+                        voiceState.userTranscript = currentTranscript.trim();
                         if (elements.voicePreviewText) {
-                            elements.voicePreviewText.textContent = voiceState.transcribedText;
+                            elements.voicePreviewText.textContent = voiceState.userTranscript;
                             elements.voicePreviewText.classList.remove("placeholder-text");
                         }
                     }
                 };
-                
+
                 voiceState.recognition.start();
             } catch (err) {
-                console.log("Web Speech preview unavailable:", err);
+                console.log("Web Speech live preview unavailable:", err);
             }
         }
     }).catch(err => {
@@ -1155,24 +1227,25 @@ function startVoiceAssistant() {
     });
 }
 
-function stopVoiceAssistant(sendToChat = true) {
-    if (!voiceState.isRecording) {
-        closeVoiceModal();
-        return;
+function handleVoiceInterruptOrSpeak() {
+    if (voiceState.state === "speaking") {
+        stopAudioPlayback();
+        startListening();
+    } else if (voiceState.state === "listening") {
+        processVoiceInput();
+    } else if (voiceState.state === "idle") {
+        startListening();
     }
+}
 
-    voiceState.isRecording = false;
+async function processVoiceInput() {
+    if (!voiceState.active) return;
 
     if (voiceState.recognition) {
         try { voiceState.recognition.stop(); } catch(e){}
     }
 
-    if (elements.voiceStatusTitle) {
-        elements.voiceStatusTitle.textContent = "Transcribing with SCX Whisper-Large-v3...";
-    }
-    if (elements.voiceStatusSubtitle) {
-        elements.voiceStatusSubtitle.textContent = "Converting audio to text via SCX.AI engine...";
-    }
+    setVoiceState("processing", "Transcribing with SCX Whisper-Large-v3...", "Converting speech to text via SCX.AI engine...");
 
     if (voiceState.mediaRecorder && voiceState.mediaRecorder.state !== "inactive") {
         voiceState.mediaRecorder.onstop = async () => {
@@ -1181,7 +1254,7 @@ function stopVoiceAssistant(sendToChat = true) {
             }
 
             const audioBlob = new Blob(voiceState.audioChunks, { type: "audio/webm" });
-            let finalTranscribedText = voiceState.transcribedText;
+            let finalUserText = voiceState.userTranscript;
 
             try {
                 const formData = new FormData();
@@ -1189,57 +1262,219 @@ function stopVoiceAssistant(sendToChat = true) {
 
                 const res = await fetch("/api/audio/transcribe", {
                     method: "POST",
-                    headers: {
-                        "x-api-key": state.config.apiKey
-                    },
+                    headers: { "x-api-key": state.config.apiKey },
                     body: formData
                 });
 
                 if (res.ok) {
                     const data = await res.json();
                     if (data.text && data.text.trim()) {
-                        finalTranscribedText = data.text.trim();
+                        finalUserText = data.text.trim();
                     }
                 }
             } catch (err) {
                 console.warn("Backend Whisper transcription error, using Web Speech text fallback:", err);
             }
 
-            closeVoiceModal();
-
-            if (finalTranscribedText && finalTranscribedText.trim()) {
-                elements.userInput.value = finalTranscribedText.trim();
-                elements.userInput.style.height = "auto";
-                elements.userInput.style.height = `${Math.min(elements.userInput.scrollHeight, 180)}px`;
-                elements.charCount.textContent = `${finalTranscribedText.length} chars`;
-
-                if (sendToChat) {
-                    handleSendMessage();
+            if (!finalUserText || !finalUserText.trim()) {
+                if (voiceState.active) {
+                    setVoiceState("idle", "No speech detected", "Tap 'Speak' to try again.");
+                    if (elements.voicePreviewText) elements.voicePreviewText.textContent = "No speech detected.";
                 }
+                return;
             }
+
+            voiceState.userTranscript = finalUserText.trim();
+            if (elements.voicePreviewText) {
+                elements.voicePreviewText.textContent = voiceState.userTranscript;
+                elements.voicePreviewText.classList.remove("placeholder-text");
+            }
+
+            await generateVoiceLLMResponse(finalUserText.trim());
         };
 
         voiceState.mediaRecorder.stop();
     } else {
-        closeVoiceModal();
+        if (voiceState.userTranscript && voiceState.userTranscript.trim()) {
+            await generateVoiceLLMResponse(voiceState.userTranscript.trim());
+        } else {
+            setVoiceState("idle", "No speech detected", "Tap 'Speak' to try again.");
+        }
     }
 }
 
-function cancelVoiceAssistant() {
-    voiceState.isRecording = false;
+async function generateVoiceLLMResponse(userMessageText) {
+    if (!voiceState.active) return;
+
+    setVoiceState("processing", "Generating response...", "LLM generating text response...");
+
+    if (elements.voiceAssistantPreview) {
+        elements.voiceAssistantPreview.textContent = "Thinking...";
+        elements.voiceAssistantPreview.classList.add("placeholder-text");
+    }
+
+    try {
+        const response = await fetch("/api/chat/stream", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-API-Key": state.config.apiKey
+            },
+            body: JSON.stringify({
+                thread_id: state.activeThreadId,
+                message: userMessageText,
+                api_key: state.config.apiKey,
+                base_url: state.config.baseUrl,
+                model: elements.headerModelSelect ? elements.headerModelSelect.value : state.config.defaultModel,
+                temperature: state.config.temperature,
+                bypass_grounded: true
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error("Chat response error");
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let accumulatedText = "";
+        let buffer = "";
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n\n");
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                    const jsonStr = line.substring(6).trim();
+                    if (!jsonStr) continue;
+                    try {
+                        const event = JSON.parse(jsonStr);
+                        if (event.type === "content") {
+                            accumulatedText += event.delta;
+                            if (elements.voiceAssistantPreview) {
+                                elements.voiceAssistantPreview.textContent = accumulatedText;
+                                elements.voiceAssistantPreview.classList.remove("placeholder-text");
+                            }
+                        }
+                    } catch (e) {}
+                }
+            }
+        }
+
+        voiceState.assistantText = accumulatedText.trim();
+
+        if (voiceState.assistantText && voiceState.active) {
+            await speakAssistantResponse(voiceState.assistantText);
+        } else if (voiceState.active) {
+            setVoiceState("idle", "No response text generated", "Tap 'Speak' to try again.");
+        }
+    } catch (err) {
+        console.error("Voice LLM generation error:", err);
+        if (voiceState.active) {
+            setVoiceState("idle", "Error generating response", err.message);
+        }
+    }
+}
+
+async function speakAssistantResponse(assistantText) {
+    if (!voiceState.active) return;
+
+    setVoiceState("speaking", "SCX Voice Assistant Speaking...", "Playing audio response via SCX.ai Speech API (tts-1 / serene-assistant)...");
+
+    try {
+        const res = await fetch("/api/audio/speech", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-API-Key": state.config.apiKey
+            },
+            body: JSON.stringify({
+                input: assistantText,
+                model: "tts-1",
+                voice: "serene-assistant",
+                response_format: "mp3",
+                speed: 1.0,
+                api_key: state.config.apiKey
+            })
+        });
+
+        if (!res.ok) {
+            throw new Error("TTS API HTTP " + res.status);
+        }
+
+        const audioBlob = await res.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        const audio = new Audio(audioUrl);
+        voiceState.currentAudio = audio;
+
+        audio.onended = () => {
+            voiceState.currentAudio = null;
+            if (voiceState.active) {
+                startListening();
+            }
+        };
+
+        audio.onerror = (e) => {
+            console.warn("TTS audio playback error:", e);
+            voiceState.currentAudio = null;
+            if (voiceState.active) {
+                setVoiceState("idle", "Audio playback complete", "Tap 'Speak' to continue.");
+            }
+        };
+
+        await audio.play();
+
+    } catch (err) {
+        console.warn("SCX TTS API error, fallback to displaying text:", err);
+        if (voiceState.active) {
+            setTimeout(() => {
+                if (voiceState.active) startListening();
+            }, 3000);
+        }
+    }
+}
+
+function stopAudioPlayback() {
+    if (voiceState.currentAudio) {
+        try {
+            voiceState.currentAudio.pause();
+            voiceState.currentAudio.currentTime = 0;
+        } catch (e) {}
+        voiceState.currentAudio = null;
+    }
+}
+
+async function saveVoiceTranscript() {
+    if (state.activeThreadId) {
+        await selectThread(state.activeThreadId);
+        await loadThreads();
+    }
+    alert("💾 Voice transcript saved to active thread conversation.");
+}
+
+function closeVoiceModal() {
+    voiceState.active = false;
+    stopAudioPlayback();
+
     if (voiceState.recognition) {
         try { voiceState.recognition.stop(); } catch(e){}
     }
     if (voiceState.stream) {
         voiceState.stream.getTracks().forEach(track => track.stop());
     }
-    closeVoiceModal();
-}
 
-function closeVoiceModal() {
-    voiceState.isRecording = false;
     if (elements.voiceModal) {
         elements.voiceModal.classList.add("hidden");
+    }
+
+    if (state.activeThreadId) {
+        selectThread(state.activeThreadId);
     }
 }
 

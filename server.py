@@ -36,6 +36,12 @@ GROUNDED_ENDPOINT = os.getenv("GROUNDED_ENDPOINT", "https://grounded-topaz.verce
 GROUNDED_API_KEY = os.getenv("GROUNDED_API_KEY", "")
 GROUNDED_AGENT_ID = os.getenv("GROUNDED_AGENT_ID", "")
 
+# SCX.ai TTS Configuration Controls
+TTS_MODEL = os.getenv("TTS_MODEL", "tts-1")
+TTS_VOICE = os.getenv("TTS_VOICE", "serene-assistant")
+TTS_FORMAT = os.getenv("TTS_FORMAT", "mp3")
+TTS_SPEED = float(os.getenv("TTS_SPEED", "1.0"))
+
 # Rate limiting & file upload size bounds
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
@@ -393,11 +399,20 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = 0.7
     grounded_agent_id: Optional[str] = None
     grounded_api_key: Optional[str] = None
+    bypass_grounded: Optional[bool] = False
 
 class GroundedScoreRequest(BaseModel):
     question: str
     ai_response: str
     agent_id: Optional[str] = None
+    api_key: Optional[str] = None
+
+class TTSRequest(BaseModel):
+    input: str
+    model: Optional[str] = None
+    voice: Optional[str] = None
+    response_format: Optional[str] = None
+    speed: Optional[float] = None
     api_key: Optional[str] = None
 
 # Routes
@@ -468,6 +483,60 @@ async def transcribe_audio(request: Request, file: UploadFile = File(...)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Audio transcription error: {str(e)}")
+
+# SCX.ai Text-to-Speech API Integration (TTS)
+@app.post("/api/audio/speech")
+async def generate_speech(data: TTSRequest, request: Request, x_api_key: Optional[str] = Header(None)):
+    verify_auth(request, custom_token=x_api_key)
+    api_key = data.api_key or x_api_key or DEFAULT_API_KEY
+    if not api_key:
+        raise HTTPException(status_code=400, detail="SCX API Key is not configured on server.")
+
+    model = data.model or TTS_MODEL
+    voice = data.voice or TTS_VOICE
+    response_format = data.response_format or TTS_FORMAT
+    speed = data.speed or TTS_SPEED
+
+    clean_input = data.input.strip()
+    if not clean_input:
+        raise HTTPException(status_code=400, detail="Input text for speech generation cannot be empty.")
+
+    try:
+        client = AsyncOpenAI(
+            base_url=DEFAULT_BASE_URL,
+            api_key=api_key
+        )
+        
+        speech_res = await client.audio.speech.create(
+            model=model,
+            voice=voice,
+            input=clean_input,
+            response_format=response_format,
+            speed=speed
+        )
+        
+        media_type = f"audio/{response_format}" if response_format != "pcm" else "audio/pcm"
+
+        if hasattr(speech_res, "aiter_bytes"):
+            async def audio_stream():
+                async for chunk in speech_res.aiter_bytes():
+                    yield chunk
+            return StreamingResponse(audio_stream(), media_type=media_type)
+        elif hasattr(speech_res, "response") and hasattr(speech_res.response, "aiter_bytes"):
+            async def audio_stream():
+                async for chunk in speech_res.response.aiter_bytes():
+                    yield chunk
+            return StreamingResponse(audio_stream(), media_type=media_type)
+        elif hasattr(speech_res, "content"):
+            return StreamingResponse(io.BytesIO(speech_res.content), media_type=media_type)
+        elif hasattr(speech_res, "read"):
+            audio_bytes = await speech_res.read() if asyncio.iscoroutinefunction(speech_res.read) else speech_res.read()
+            return StreamingResponse(io.BytesIO(audio_bytes), media_type=media_type)
+        else:
+            return StreamingResponse(io.BytesIO(bytes(speech_res)), media_type=media_type)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"SCX TTS API error: {str(e)}")
 
 # Document Management APIs
 
@@ -748,29 +817,40 @@ async def chat_stream(request_data: ChatRequest, request: Request, x_api_key: Op
                     assistant_content += delta
                     yield f"data: {json.dumps({'type': 'content', 'delta': delta})}\n\n"
                     
-            yield f"data: {json.dumps({'type': 'grounded_evaluating', 'message_id': assistant_msg_id})}\n\n"
+            if request_data.bypass_grounded:
+                finish_time = datetime.utcnow().isoformat()
+                db_conn = get_db()
+                db_conn.execute(
+                    "INSERT INTO messages (id, thread_id, role, content, timestamp, grounded_result) VALUES (?, ?, ?, ?, ?, ?)",
+                    (assistant_msg_id, request_data.thread_id, "assistant", assistant_content, finish_time, None)
+                )
+                db_conn.commit()
+                db_conn.close()
+                yield f"data: {json.dumps({'type': 'done', 'message_id': assistant_msg_id, 'full_content': assistant_content})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'grounded_evaluating', 'message_id': assistant_msg_id})}\n\n"
 
-            grounded_res = await asyncio.to_thread(
-                monitor_grounded,
-                question=request_data.message,
-                response=assistant_content,
-                agent_id=request_data.grounded_agent_id,
-                api_key=request_data.grounded_api_key
-            )
-            
-            grounded_json_str = json.dumps(grounded_res)
-            
-            finish_time = datetime.utcnow().isoformat()
-            db_conn = get_db()
-            db_conn.execute(
-                "INSERT INTO messages (id, thread_id, role, content, timestamp, grounded_result) VALUES (?, ?, ?, ?, ?, ?)",
-                (assistant_msg_id, request_data.thread_id, "assistant", assistant_content, finish_time, grounded_json_str)
-            )
-            db_conn.commit()
-            db_conn.close()
-            
-            yield f"data: {json.dumps({'type': 'grounded_verification', 'message_id': assistant_msg_id, 'verification': grounded_res})}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'message_id': assistant_msg_id, 'full_content': assistant_content})}\n\n"
+                grounded_res = await asyncio.to_thread(
+                    monitor_grounded,
+                    question=request_data.message,
+                    response=assistant_content,
+                    agent_id=request_data.grounded_agent_id,
+                    api_key=request_data.grounded_api_key
+                )
+                
+                grounded_json_str = json.dumps(grounded_res)
+                
+                finish_time = datetime.utcnow().isoformat()
+                db_conn = get_db()
+                db_conn.execute(
+                    "INSERT INTO messages (id, thread_id, role, content, timestamp, grounded_result) VALUES (?, ?, ?, ?, ?, ?)",
+                    (assistant_msg_id, request_data.thread_id, "assistant", assistant_content, finish_time, grounded_json_str)
+                )
+                db_conn.commit()
+                db_conn.close()
+                
+                yield f"data: {json.dumps({'type': 'grounded_verification', 'message_id': assistant_msg_id, 'verification': grounded_res})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'message_id': assistant_msg_id, 'full_content': assistant_content})}\n\n"
 
         except Exception:
             yield f"data: {json.dumps({'type': 'error', 'error': 'An error occurred while generating response.'})}\n\n"

@@ -321,36 +321,47 @@
     <div id="voice-modal" class="modal-overlay hidden">
         <div class="modal-content voice-modal-content">
             <div class="modal-header">
-                <h3><i data-lucide="mic" style="color: var(--accent-green);"></i> SCX Voice Assistant</h3>
-                <button id="btn-close-voice-modal" class="icon-button"><i data-lucide="x"></i></button>
+                <h3><i data-lucide="mic" style="color: var(--accent-green);"></i> SCX Voice Assistant Mode</h3>
+                <span id="voice-state-badge" class="voice-state-badge badge-listening">● Listening</span>
+                <button id="btn-close-voice-modal" class="icon-button" title="Exit Voice Mode"><i data-lucide="x"></i></button>
             </div>
 
             <div class="voice-modal-body">
-                <div class="voice-visualizer-container">
+                <div class="voice-visualizer-container" id="voice-visualizer">
                     <div class="pulse-ring ring-1"></div>
                     <div class="pulse-ring ring-2"></div>
                     <div class="pulse-ring ring-3"></div>
                     <div class="mic-sphere" id="mic-sphere">
-                        <i data-lucide="mic" class="mic-icon-large"></i>
+                        <i data-lucide="mic" class="mic-icon-large" id="voice-mic-icon"></i>
                     </div>
                 </div>
 
                 <div class="voice-status-wrapper">
                     <h4 id="voice-status-title">Listening to your voice...</h4>
-                    <p id="voice-status-subtitle">Speak clearly into your microphone. Powered by SCX Whisper-Large-v3 ASR.</p>
+                    <p id="voice-status-subtitle">Speak clearly into your microphone. Powered by SCX Whisper-Large-v3 ASR & SCX TTS.</p>
                 </div>
 
                 <div id="voice-live-preview" class="voice-live-preview">
-                    <span id="voice-preview-text" class="placeholder-text">Listening... Speak now</span>
+                    <div class="preview-section">
+                        <span class="preview-label">User Speech:</span>
+                        <p id="voice-preview-text" class="placeholder-text">Listening... Speak now</p>
+                    </div>
+                    <div class="preview-section assistant-preview-section">
+                        <span class="preview-label">AI Response:</span>
+                        <p id="voice-assistant-preview" class="placeholder-text">Waiting for speech input...</p>
+                    </div>
                 </div>
             </div>
 
             <div class="modal-footer voice-modal-footer">
-                <button id="btn-cancel-voice" class="btn-secondary" type="button">
-                    <i data-lucide="x-circle"></i> Cancel
+                <button id="btn-save-voice-transcript" class="btn-secondary" type="button" title="Save complete voice transcript to thread">
+                    <i data-lucide="save"></i> 💾 Save Transcript
                 </button>
-                <button id="btn-stop-transcribe-voice" class="btn-primary voice-send-btn" type="button">
-                    <i data-lucide="send"></i> Done & Send Message
+                <button id="btn-interrupt-voice" class="btn-primary voice-action-btn" type="button">
+                    <i data-lucide="mic"></i> Speak / Interrupt
+                </button>
+                <button id="btn-cancel-voice" class="btn-secondary danger-btn" type="button" title="Stop & Exit Voice Mode">
+                    <i data-lucide="square"></i> Exit Voice Mode
                 </button>
             </div>
         </div>
