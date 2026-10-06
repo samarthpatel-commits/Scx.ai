@@ -50,6 +50,9 @@ if DATABASE_URL.startswith("postgres://"):
 
 IS_POSTGRES = bool(DATABASE_URL)
 
+if ENVIRONMENT == "production" and not IS_POSTGRES:
+    print("[Warning] DATABASE_URL is missing in production environment. Render PostgreSQL connection is required.")
+
 try:
     import psycopg2
 except ImportError:
@@ -63,10 +66,13 @@ class DBConn:
                 raise RuntimeError("psycopg2-binary package is required for PostgreSQL connections.")
             self.conn = psycopg2.connect(DATABASE_URL)
         else:
+            if ENVIRONMENT == "production":
+                raise RuntimeError("Production environment requires DATABASE_URL to connect to Render PostgreSQL database.")
             self.conn = sqlite3.connect(DB_FILE, timeout=30.0)
             self.conn.execute("PRAGMA journal_mode=WAL;")
             self.conn.execute("PRAGMA synchronous=NORMAL;")
             self.conn.row_factory = sqlite3.Row
+
 
     def execute(self, query: str, params: tuple = ()):
         cursor = self.conn.cursor()
