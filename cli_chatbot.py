@@ -22,7 +22,7 @@ load_dotenv()
 
 # Configuration Defaults
 DEFAULT_BASE_URL = os.getenv("SCX_BASE_URL", "https://api.scx.ai/v1")
-DEFAULT_API_KEY = os.getenv("SCX_API_KEY", "sk-scx-6d7be01ef8e90c890b17622e309053f3")
+DEFAULT_API_KEY = os.getenv("SCX_API_KEY", "")
 DEFAULT_MODEL = os.getenv("SCX_DEFAULT_MODEL", "Meta-Llama-3.3-70B-Instruct")
 
 # Windows Console Encoding Fix

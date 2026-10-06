@@ -5,6 +5,10 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
       - key: SCX_BASE_URL
         value: https://api.scx.ai/v1
       - key: SCX_API_KEY
@@ -14,6 +18,12 @@ services:
       - key: GROUNDED_ENDPOINT
         value: https://grounded-topaz.vercel.app/api/v1/monitor
       - key: GROUNDED_API_KEY
-        value: grnd_c69448bc68f344fba557d1c465cf5a20b5daa9ac0737d87f
+        sync: false
       - key: GROUNDED_AGENT_ID
-        value: 7646d28c-446b-491c-8f32-7d1c134d78a9
+        sync: false
+      - key: APP_AUTH_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+
+

@@ -1,12 +1,12 @@
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.venv/
-env/
 .env
 .env.*
 !.env.example
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
 chat_threads.db
 *.db
 *.sqlite
@@ -14,4 +14,5 @@ chat_threads.db
 documents/*
 !documents/.gitkeep
 scratch/
-
+.venv/
+env/
