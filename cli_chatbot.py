@@ -114,8 +114,13 @@ class SCXCLIChatBot:
                 # Limit snippet length to 2500 chars to save tokens
                 snippet = text[:2500]
                 doc_parts.append(f"--- Doc: {fname} ---\n{snippet}")
-            doc_ctx = "\n\n".join(doc_parts)
-            formatted.append({"role": "system", "content": f"Context Documents:\n{doc_ctx}"})
+            doc_instruction = (
+                f"Context Documents:\n{doc_ctx}\n\n"
+                f"INSTRUCTION:\n"
+                f"1. Primary Source: Check if the question can be answered using the attached Context Documents above (cite filenames when relevant).\n"
+                f"2. Fallback / Real-World Knowledge: If the answer is NOT present in the Context Documents, use your general real-world knowledge (SCX.AI) to answer the user's question completely."
+            )
+            formatted.append({"role": "system", "content": doc_instruction})
             
         formatted.extend(self.messages)
         return formatted

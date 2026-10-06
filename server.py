@@ -713,7 +713,9 @@ async def chat_stream(request_data: ChatRequest, request: Request, x_api_key: Op
         effective_system_prompt = (
             f"DOCUMENT KNOWLEDGE BASE (Source documents uploaded by user):\n"
             f"{doc_context_str}\n\n"
-            f"INSTRUCTION: Answer the user's question accurately based on the Document Knowledge Base provided above. Cite filenames when relevant."
+            f"INSTRUCTION: \n"
+            f"1. Primary Source: First, search for relevant information in the Document Knowledge Base provided above. If the user's question can be answered using the documents, answer accurately based on them and cite the relevant document filename(s).\n"
+            f"2. Fallback / Real-World Knowledge: If the answer or relevant information is NOT present in the Document Knowledge Base, proceed to answer the question using your general real-world knowledge (SCX.AI). Do NOT refuse to answer simply because it is not in the documents."
         )
         formatted_messages.append({"role": "system", "content": effective_system_prompt})
     
@@ -839,7 +841,9 @@ async def open_public_chat(data: OpenIntegrationRequest, request: Request):
             "content": (
                 "DOCUMENT KNOWLEDGE BASE (Trained/Loaded from documents folder & uploaded files):\n"
                 f"{doc_context_str}\n\n"
-                "INSTRUCTION: You must answer the user's question accurately based on the Document Knowledge Base provided above. Cite filenames when relevant."
+                "INSTRUCTION: \n"
+                "1. Primary Source: First, search for relevant information in the Document Knowledge Base provided above. If the user's question can be answered using the documents, answer accurately based on them and cite the relevant document filename(s).\n"
+                "2. Fallback / Real-World Knowledge: If the answer or relevant information is NOT present in the Document Knowledge Base, proceed to answer the question using your general real-world knowledge (SCX.AI). Do NOT refuse to answer simply because it is not in the documents."
             )
         })
     for row in history_rows:
